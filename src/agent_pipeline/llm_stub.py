@@ -8,7 +8,7 @@ Replace by importing from src.llm_finetuning.inference instead.
 """
 
 
-def generate_answer(query: str, context: str = None) -> dict:
+def generate_answer(query: str, context: str = None, system_prompt: str = None) -> dict:
     return {
         "answer": None,
         "confident": False,
