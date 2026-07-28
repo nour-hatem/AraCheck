@@ -32,7 +32,7 @@ class AgentState(TypedDict):
 
 
 def llm_node(state: AgentState) -> AgentState:
-    result = generate_answer(state["query"])
+    result = generate_answer(state["query"], system_prompt=SYSTEM_PROMPT)
 
     if result.get("confident"):
         state["answer"] = result["answer"]
@@ -50,7 +50,7 @@ def rag_node(state: AgentState) -> AgentState:
     context = get_medical_context(state["query"])
 
     if context:
-        result = generate_answer(state["query"], context=context)
+        result = generate_answer(state["query"], context=context, system_prompt=SYSTEM_PROMPT)
         state["answer"] = result["answer"]
         state["source"] = "rag"
         state["context"] = context
@@ -65,7 +65,7 @@ def route_after_rag(state: AgentState) -> str:
 def web_node(state: AgentState) -> AgentState:
     results = web_search(state["query"])
     context = format_web_context(results)
-    result = generate_answer(state["query"], context=context)
+    result = generate_answer(state["query"], context=context, system_prompt=SYSTEM_PROMPT)
 
     state["answer"] = result["answer"] or "No reliable answer could be found."
     state["source"] = "web"
