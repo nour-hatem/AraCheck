@@ -24,6 +24,7 @@ Data/
 *.csv
 *.xlsx
 *.parquet
+*.zip
 
 # ── Model weights (too large for git — use DVC or HuggingFace Hub) ─────────────
 models/
