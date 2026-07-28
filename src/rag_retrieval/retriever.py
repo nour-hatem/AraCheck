@@ -92,10 +92,11 @@ def rerank(query: str, hits: list[dict], top_k: int = 5) -> list[dict]:
     return sorted(hits, key=lambda h: h["rerank_score"], reverse=True)[:top_k]
 
 
-def search(query: str, top_k: int = 25) -> list[dict]:
+def search(query: str, top_k: int = 25, final_top_k: int = 5) -> list[dict]:
     """
     Retrieves top_k candidates from Qdrant by vector similarity, then reranks
-    them with the cross-encoder and returns the final top 5.
+    them with the cross-encoder and returns the final final_top_k results
+    (default 5, backward-compatible).
 
     Returns a list of dicts, each with:
       "text", "title", "score" (vector similarity), "payload" (raw Qdrant
@@ -118,7 +119,7 @@ def search(query: str, top_k: int = 25) -> list[dict]:
         }
         for point in results.points
     ]
-    return rerank(query, candidates, top_k=5)
+    return rerank(query, candidates, top_k=final_top_k)
 
 
 def generate_query_variations(query: str, n: int = 3) -> list[str]:
