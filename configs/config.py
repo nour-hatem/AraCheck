@@ -48,6 +48,9 @@ class Config:
     # ── Model ─────────────────────────────────────────────────────────────────
     base_model_name: str = "Qwen/Qwen2.5-3B-Instruct"
 
+    # Model used when backend='api' (must be available on HF Serverless)
+    api_model_name: str = "Qwen/Qwen2.5-72B-Instruct"
+
     # Directory where HuggingFace Trainer saves checkpoints
     output_dir: Path = field(default_factory=lambda: _ROOT / "models" / "Qwen_Medical")
 
@@ -116,15 +119,14 @@ class Config:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def validate(self) -> None:
+    def validate_training(self) -> None:
         """
-        Raise a descriptive exception immediately if any configuration value
-        is invalid.  Call this once at the top of main() so failures are
-        caught before the model is loaded.
+        Validate all settings required for the training pipeline.
+        Raises ValueError with a full list of issues if anything is wrong.
+        Call this at the top of run_training.py.
         """
         errors: list[str] = []
 
-        # Data file must exist before we start loading a 7-billion-parameter model
         if not self.data_path.exists():
             errors.append(
                 f"data_path not found: '{self.data_path}'\n"
@@ -153,7 +155,25 @@ class Config:
             )
             raise ValueError(msg)
 
-        logger.info("Config validated successfully.")
+        logger.info("Training config validated successfully.")
+
+    def validate_inference(self) -> None:
+        """
+        Validate settings required for inference only.
+        Only checks that the LoRA weights directory exists.
+        Call this at the top of run_inference.py.
+        """
+        if not self.lora_save_dir.exists():
+            raise FileNotFoundError(
+                f"LoRA weights not found at: '{self.lora_save_dir}'\n"
+                "  → Run the training pipeline first, or download "
+                "Qwen_Medical_LoRA into the models/ directory."
+            )
+        logger.info("Inference config validated successfully.")
+
+    def validate(self) -> None:
+        """Alias for validate_training() — kept for backward compatibility."""
+        self.validate_training()
 
     def summary(self) -> str:
         """Return a human-readable multi-line string for logging at startup."""

@@ -15,7 +15,7 @@ Responsibilities
 """
 
 from __future__ import annotations
-Public
+
 import logging
 import math
 from typing import TYPE_CHECKING
