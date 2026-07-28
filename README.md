@@ -12,11 +12,13 @@ QLoRA fine-tuning pipeline for **Qwen2.5-3B-Instruct** on the AHD medical Q&A da
 ├── src/
 │   ├── __init__.py
 │   ├── dataset_builder.py  # Loads data → Qwen chat-template format
+│   ├── inference.py        # Local generation logic (MedicalAssistant)
 │   ├── model_manager.py    # 4-bit quantization + LoRA adapter setup
 │   └── trainer.py          # HuggingFace Trainer wrapper
 ├── data/                   # ← place dataset_20k.csv here (gitignored)
 ├── models/                 # ← checkpoints saved here (gitignored)
-├── run_training.py         # Entry point
+├── run_inference.py        # Interactive CLI for testing the model
+├── run_training.py         # Entry point for fine-tuning
 └── requirements.txt
 ```
 
@@ -67,6 +69,28 @@ The pipeline will:
 3. Format the dataset using the Qwen chat template.
 4. Train for `max_steps` steps, saving checkpoints every `save_steps` steps.
 5. Save the final LoRA adapter to `models/Qwen_Medical_LoRA/`.
+
+## Local Inference (Testing the Model)
+
+Once the model is trained, or if you downloaded the pre-trained `Qwen_Medical_LoRA` weights (e.g., from Kaggle/HuggingFace), you can test the model interactively.
+
+If you downloaded the weights manually, place the folder inside the `models/` directory so it looks like this:
+```text
+models/
+└── Qwen_Medical_LoRA/
+    ├── adapter_model.safetensors
+    ├── adapter_config.json
+    ├── tokenizer.json
+    └── ...
+```
+
+Run the interactive CLI:
+
+```bash
+python run_inference.py
+```
+
+This will load the base model, merge your local LoRA adapter on top of it, and open an interactive chat session in your terminal where you can prompt the medical assistant.
 
 ## Requirements
 
