@@ -46,18 +46,17 @@ def route_after_llm(state: AgentState) -> str:
     return END if state.get("answer") else "rag_node"
 
 
-def rag_node(state: AgentState) -> AgentState:
-    hits = rag_search(state["query"])
+from src.agent_pipeline.tools.rag_tool import get_medical_context
 
-    if is_confident(hits):
-        context = format_rag_context(hits)
+def rag_node(state: AgentState) -> AgentState:
+    context = get_medical_context(state["query"])
+    if context:
         result = generate_answer(state["query"], context=context)
         state["answer"] = result["answer"]
         state["source"] = "rag"
         state["context"] = context
-
+        
     return state
-
 
 def route_after_rag(state: AgentState) -> str:
     return END if state.get("answer") else "web_node"
