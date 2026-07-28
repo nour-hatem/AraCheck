@@ -1,0 +1,55 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.conda/
+
+# ── Jupyter ────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Data (large files — never commit raw or processed datasets to git) ─────────
+data/
+Data/
+*.csv
+*.xlsx
+*.parquet
+
+# ── Model weights (too large for git — use DVC or HuggingFace Hub) ─────────────
+models/
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+
+# ── Training artefacts ─────────────────────────────────────────────────────────
+runs/
+logs/
+wandb/
+mlruns/
+outputs/
+
+# ── Preprocessing branch leftovers (untracked, not ours) ──────────────────────
+Configs/
+Src/
+src/rag_retrieval/
+src/agent_pipeline/
+
+# ── Environment ────────────────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
