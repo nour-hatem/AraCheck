@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+langgraph
+qdrant-client
+sentence-transformers
+huggingface-hub
+groq
+torch
+tavily-python
+openai-whisper
+python-multipart
+# Rate limiting
+slowapi
+# PDF text extraction
+pymupdf
