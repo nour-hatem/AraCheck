@@ -1,11 +1,6 @@
-# DEPRECATED — This root-level file is superseded by the src/ package.
-# It is kept for backwards-compatibility only. Do not import from it.
-# Use the canonical location instead (see src/ directory).
-# Canonical location: src/schemas/schemas.py
-
 """
-schemas.py
-----------
+src/schemas/schemas.py
+-----------------------
 Pydantic models for all API request/response contracts.
 """
 from typing import List, Optional, Literal

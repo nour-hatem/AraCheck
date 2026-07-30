@@ -2,16 +2,21 @@ version: '3.8'
 
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - HF_TOKEN=$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
+    env_file:
+      - .env
     volumes:
-      - ./backend:/app
+      - ./src:/app/src
+      - ./configs:/app/configs
+      - ./scripts:/app/scripts
+      - ./logs:/app/logs
 
   frontend:
-    build: ./AraCheck-frontend/AraCheck-frontend/frontend
+    build: ./frontend
     ports:
       - "3000:3000"
     environment:

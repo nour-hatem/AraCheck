@@ -15,15 +15,13 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 HF_TOKEN     = os.environ.get("HF_TOKEN", "")
 
-# Groq model — Qwen 2.5-32B (closest to the original Qwen 2.5-72B used on HF)
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen-qwq-32b")
-# HuggingFace fallback model (used only if GROQ_API_KEY is missing)
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 HF_MODEL   = "Qwen/Qwen2.5-7B-Instruct"
 
 _groq_client = None
 _hf_client   = None
 
-# Common greetings, personal intro, and casual non-medical queries
+# Greeting and casual-chat patterns — bypasses RAG routing
 _CASUAL_PATTERNS = re.compile(
     r"^(hi|hello|hey|good morning|good evening|good night|how are you|how r u|"
     r"سلام|هلا|هاي|مرحبا|أهلا|اهلا|ازيك|ازيك|"
@@ -37,7 +35,7 @@ _CASUAL_PATTERNS = re.compile(
     re.IGNORECASE | re.UNICODE,
 )
 
-# Short non-medical phrases that shouldn't trigger RAG/web
+# Non-medical short-phrase detector
 _NON_MEDICAL_KEYWORDS = re.compile(
     r"(يوم|النهاردة|امبارح|بكرة|الوقت|الساعة|الطقس|اخبار|جديد|"
     r"today|yesterday|tomorrow|time|weather|news|date|"
@@ -59,7 +57,7 @@ def _get_client():
                 logger.warning("[llm_stub] groq package not installed, falling back to HF")
         if _groq_client:
             return _groq_client, GROQ_MODEL
-    # Fallback: HuggingFace InferenceClient
+    # HuggingFace fallback
     if _hf_client is None:
         from huggingface_hub import InferenceClient
         _hf_client = InferenceClient(api_key=HF_TOKEN)
@@ -72,11 +70,11 @@ def _is_greeting(query: str) -> bool:
     q = query.strip()
     if _CASUAL_PATTERNS.search(q):
         return True
-    # Catch short queries asking about user's identity/name/age
+    # Identity/personal-info short queries
     keywords = ["اسمي", "عمري", "مين انا", "من انا", "مين أنت", "مين انت", "من أنت", "من انت"]
     if any(kw in q for kw in keywords) and len(q.split()) < 10:
         return True
-    # Catch short casual/non-medical chit-chat (≤5 words and no medical signal)
+    # Short non-medical chit-chat
     if len(q.split()) <= 5 and _NON_MEDICAL_KEYWORDS.search(q):
         return True
     return False
@@ -87,7 +85,7 @@ def format_messages(system_prompt: str, history: list = None, user_message: str 
     """Formats system prompt, conversation history, and current user message into HF/OpenAI chat format."""
     messages = [{"role": "system", "content": system_prompt}]
     if history:
-        for msg in history[-8:]:  # Keep last 8 turns for memory context
+        for msg in history[-8:]:
             role = msg.get("role")
             if not role:
                 sender = str(msg.get("sender", "")).lower()
@@ -126,7 +124,7 @@ def generate_answer(
             "If you are not sure about a medical question, say so honestly."
         )
 
-    # --- Handle greetings & casual memory queries directly without calling RAG ---
+    # Greetings and casual queries — skip RAG
     if not context and _is_greeting(query):
         try:
             client, model = _get_client()
@@ -143,7 +141,7 @@ def generate_answer(
             logger.warning("[llm_stub] Casual chat error: %s", e)
             return {"answer": "أهلاً بك! كيف يمكنني مساعدتك في استفساراتك الطبية؟", "confident": True}
 
-    # --- Handle context-grounded answers (RAG / Web) ---
+    # Context-grounded generation (RAG or web)
     if context:
         user_message = (
             f"Using the following medical context, answer the question accurately.\n\n"
@@ -155,7 +153,7 @@ def generate_answer(
             f"Rely strictly on the factual content, structure the answer clearly, and cite sources as [1], [2] where appropriate."
         )
     else:
-        # --- Try answering from LLM's own knowledge ---
+        # Direct LLM generation — no external context
         user_message = (
             f"Medical question: {query}\n\n"
             f"Answer in the same language as the question. "
@@ -175,13 +173,13 @@ def generate_answer(
         )
         answer = response.choices[0].message.content.strip()
 
-        # If no context, check if model expressed uncertainty
+        # Propagate uncertainty signal when no context was provided
         if not context:
             if "I_AM_NOT_CONFIDENT" in answer or len(answer) < 20:
                 return {"answer": None, "confident": False}
             return {"answer": answer, "confident": True}
 
-        # With context, always return the generated answer
+
         return {"answer": answer, "confident": True}
 
     except Exception as e:

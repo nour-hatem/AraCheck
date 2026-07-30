@@ -122,7 +122,7 @@ class DatasetBuilder:
                 "Dataset is empty after dropping rows with null values."
             )
 
-        return df[list(_REQUIRED_COLUMNS)]  # keep only what we need
+        return df[list(_REQUIRED_COLUMNS)]
 
     def _split(self, df: pd.DataFrame) -> DatasetDict:
         dataset = Dataset.from_pandas(df, preserve_index=False)

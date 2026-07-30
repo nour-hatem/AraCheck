@@ -6,6 +6,10 @@ Owner: Member 3 (RAG Retrieval & Evaluation)
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 RERANKER_MODEL = "BAAI/bge-reranker-base"
 
 _tokenizer = None
@@ -20,7 +24,7 @@ def get_reranker(device: str = "cuda"):
         _model = AutoModelForSequenceClassification.from_pretrained(RERANKER_MODEL)
         _model.eval()
         _model.to(device)
-        print(f"[reranker] Model loaded: {RERANKER_MODEL}")
+        logger.info(f"[reranker] Model loaded: {RERANKER_MODEL}")
 
     return _tokenizer, _model
 

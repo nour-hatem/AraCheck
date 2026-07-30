@@ -1,11 +1,6 @@
-# DEPRECATED — This root-level file is superseded by the src/ package.
-# It is kept for backwards-compatibility only. Do not import from it.
-# Use the canonical location instead (see src/ directory).
-# Canonical location: src/core/validation.py
-
 """
-validation.py
--------------
+src/core/validation.py
+----------------------
 File upload validation utilities for audio, image, and PDF files.
 """
 from fastapi import UploadFile, HTTPException, status
@@ -19,11 +14,16 @@ MAX_PDF_SIZE   = 25 * 1024 * 1024   # 25 MB
 ALLOWED_AUDIO_TYPES = {
     "audio/webm",
     "audio/wav",
+    "audio/x-wav",
     "audio/mpeg",    # mp3
     "audio/ogg",
     "audio/mp4",
     "audio/x-m4a",
     "audio/m4a",
+    "audio/aac",
+    "audio/opus",
+    "audio/flac",
+    "video/webm",    # Common Chrome MediaRecorder output
 }
 
 ALLOWED_IMAGE_TYPES = {
@@ -45,11 +45,9 @@ def validate_audio_file(file: UploadFile) -> None:
     """Validate the MIME type of an uploaded audio file."""
     content_type = (file.content_type or "").lower()
     if not content_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"detail": "Missing content type for uploaded file", "error_code": "missing_content_type"},
-        )
-    # Some clients report 'audio/mp4; codecs="..."' — use startswith
+        return
+    if content_type.startswith("audio/") or content_type.startswith("video/webm"):
+        return
     if not any(content_type.startswith(t) for t in ALLOWED_AUDIO_TYPES):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -1,7 +1,7 @@
 """
 graph.py
 --------
-Owner: Member 4 (Agent & Web Search & Voice)
+LangGraph agent workflow definition for AraCheck medical QA.
 """
 from typing import Optional, TypedDict
 
@@ -10,9 +10,6 @@ from langgraph.graph import END, StateGraph
 from src.agent_pipeline.tools.rag_tool import get_medical_context
 from src.agent_pipeline.tools.web_search import format_web_context, web_search
 
-# Always import the robust stub as the primary graph LLM.
-# inference.generate_answer (heavy 72B model) is tried first in llm_node only
-# if available; stub acts as fallback so a 402 / network error never crashes.
 from src.agent_pipeline.llm_stub import generate_answer as _stub_generate
 
 try:
@@ -23,18 +20,17 @@ except ImportError:
 
 
 def generate_answer(query, history=None, context=None, system_prompt=None, max_tokens=1024):
-    """Try the heavy inference model first; fall back to llm_stub on any error."""
+    """Primary LLM dispatcher with fallback handler."""
     if _has_inference:
         try:
             result = _inference_generate(
                 query, history=history, context=context,
                 system_prompt=system_prompt, max_tokens=max_tokens
             )
-            # If inference returned a real answer, use it
             if result.get("answer"):
                 return result
         except Exception:
-            pass  # fall through to stub
+            pass
     return _stub_generate(
         query, history=history, context=context,
         system_prompt=system_prompt, max_tokens=max_tokens

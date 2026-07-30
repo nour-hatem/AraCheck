@@ -49,9 +49,7 @@ from src.rag_retrieval.retriever import search
 
 logger = logging.getLogger(__name__)
 
-# JSONL log file for future recalibration of margin_threshold / absolute_floor.
-# One record per get_medical_context_with_confidence() call.
-# NOTE: assumes rag_tool.py is 4 directories below project root; update if the file moves.
+# Confidence log file for score threshold calibration.
 _LOG_DIR = Path(__file__).resolve().parent.parent.parent.parent / "logs"
 _LOG_FILE = _LOG_DIR / "rag_confidence_log.jsonl"
 

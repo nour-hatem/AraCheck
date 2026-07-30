@@ -1,21 +1,19 @@
-# DEPRECATED — This root-level file is superseded by the src/ package.
-# It is kept for backwards-compatibility only. Do not import from it.
-# Use the canonical location instead (see src/ directory).
-# Canonical location: src/main.py
-
 """
-main.py
--------
+src/main.py
+-----------
 AraCheck FastAPI backend — entry point.
 
 Endpoints:
   POST /chat           — Medical AI agent chat
-  POST /transcribe     — Audio → text (Whisper STT)
+  POST /transcribe     — Audio -> text (Whisper STT)
   POST /analyze-image  — Medical image analysis (VLM)
   POST /upload-pdf     — PDF ingestion into Qdrant
   GET  /flags          — List feature flags
   PATCH /flags/{name}  — Toggle a feature flag (requires x-admin-key)
   GET  /health         — Health check
+
+Run from the project root with:
+    uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 """
 import os
 import uuid
@@ -26,30 +24,44 @@ from typing import List
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aracheck")
 
 
 def _parse_allowed_origins() -> List[str]:
-    raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-    origins = [o.strip() for o in raw.split(",") if o.strip()]
-    return origins or ["http://localhost:3000"]
+    raw = os.getenv("ALLOWED_ORIGINS", getattr(settings, "ALLOWED_ORIGINS", ""))
+    if not raw or raw.strip() == "*":
+        return ["*"]
+    defaults = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3002",
+    ]
+    parsed = [o.strip() for o in raw.split(",") if o.strip()]
+    for d in defaults:
+        if d not in parsed:
+            parsed.append(d)
+    return parsed
 
+
+# ─── Settings (must be imported early — also triggers .env loading) ───────────
+from src.settings import settings, get_active_flags, update_flag
 
 # ─── Agent & pipeline imports ─────────────────────────────────────────────────
 from src.agent_pipeline.graph import ask
 from src.agent_pipeline.image_understanding import analyze_medical_image
-from context_manager import trim_history
+from src.core.context_manager import trim_history
 
-# ─── Local module imports ─────────────────────────────────────────────────────
-from schemas import (
+# ─── Schema imports ───────────────────────────────────────────────────────────
+from src.schemas import (
     ChatRequest,
     ChatResponse,
     TranscribeResponse,
@@ -58,7 +70,9 @@ from schemas import (
     PdfUploadResponse,
     FlagUpdateRequest,
 )
-from validation import (
+
+# ─── Validation imports ───────────────────────────────────────────────────────
+from src.core.validation import (
     validate_audio_file,
     validate_audio_bytes,
     validate_image_file,
@@ -66,11 +80,11 @@ from validation import (
     validate_pdf_file,
     validate_pdf_bytes,
 )
-from settings import settings, get_active_flags, update_flag
+
+# ─── RAG ingestion import ─────────────────────────────────────────────────────
 from src.rag_ingestion.pdf_ingestor import process_and_ingest_pdf
 
 
-# ─── Rate limiter ─────────────────────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address)
 
 
@@ -102,10 +116,20 @@ def get_whisper():
     return _whisper_model
 
 
-# ─── App setup ────────────────────────────────────────────────────────────────
+async def _global_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        raise exc
+    logger.error(f"Unhandled server error on {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An internal server error occurred. Please try again later."},
+    )
+
+
 app = FastAPI(title="AraCheck API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(Exception, _global_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -151,7 +175,7 @@ async def chat_endpoint(request: Request, req: ChatRequest):
         )
 
 
-# ─── Transcribe (Voice → Text) ────────────────────────────────────────────────
+# ─── Transcribe (Voice -> Text) ───────────────────────────────────────────────
 
 @app.post("/transcribe", response_model=TranscribeResponse)
 @limiter.limit("10/minute")
@@ -178,7 +202,7 @@ async def transcribe_endpoint(
         tmp.write(contents)
         tmp_path = tmp.name
 
-    # Prepare custom prompt according to language
+    # Language-specific Whisper prompt for domain vocabulary priming
     if target_lang == "ar":
         prompt_text = (
             "استشارة طبية باللغة العربية والعامية المصرية الفصيحة: "
@@ -192,7 +216,7 @@ async def transcribe_endpoint(
 
     try:
         groq_key = os.getenv("GROQ_API_KEY", "")
-        # Option A: Ultra-fast & high-accuracy Groq Cloud Whisper (whisper-large-v3)
+        # Groq Cloud Whisper (primary)
         if groq_key and groq_key != "gsk_PUT_YOUR_GROQ_KEY_HERE":
             try:
                 from groq import Groq
@@ -212,15 +236,14 @@ async def transcribe_endpoint(
             except Exception as ge:
                 logger.warning(f"[transcribe] Groq Whisper failed ({ge}), falling back to local model.")
 
-        # Option B: Local Whisper (Optimized for speed)
+        # Local Whisper (fallback)
         model = get_whisper()
 
-        # Local transcription forcing target_lang
         result = model.transcribe(
             tmp_path,
             language=target_lang,
-            beam_size=1,        # 1 beam = 5x faster on CPU
-            best_of=1,          # 1 path = much faster
+            beam_size=1,
+            best_of=1,
             temperature=0.0,
             condition_on_previous_text=False,
             initial_prompt=prompt_text,
@@ -379,4 +402,4 @@ async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,3 +1,8 @@
+# DEPRECATED — This root-level file is superseded by the src/ package.
+# It is kept for backwards-compatibility only. Do not import from it.
+# Use the canonical location instead (see src/ directory).
+# Canonical location: src/settings.py
+
 """
 settings.py
 -----------

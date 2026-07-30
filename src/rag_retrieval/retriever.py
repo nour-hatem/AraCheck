@@ -1,19 +1,19 @@
 """
 retriever.py
 ------------
-Owner: Member 3 (RAG Retrieval & Evaluation).
-Embeds queries via the Hugging Face InferenceClient (BAAI/bge-m3), so no
-model weights are downloaded or run locally — this machine has no GPU and
-limited internet. Requires HF_TOKEN in .env.
+Qdrant vector retrieval and re-ranking for medical context querying.
 """
 
 import os
 import re
 
+import logging
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -22,11 +22,11 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "PUT_YOUR_KEY_HERE")
 HF_TOKEN       = os.environ.get("HF_TOKEN",       "PUT_YOUR_HF_TOKEN_HERE")
 
 COLLECTION_NAME = "aradoc_pubmed"
-TEXT_FIELD      = "content"          # confirmed Qdrant payload key
+TEXT_FIELD      = "content"
 
 EMBEDDING_MODEL = "BAAI/bge-m3"
 RERANK_MODEL    = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-GEN_MODEL       = "Qwen/Qwen2.5-7B-Instruct"  # used only by multi_query_search
+GEN_MODEL       = "Qwen/Qwen2.5-7B-Instruct"
 
 _client    = None
 _hf_client = None
@@ -95,31 +95,30 @@ def rerank(query: str, hits: list[dict], top_k: int = 5) -> list[dict]:
 def search(query: str, top_k: int = 25, final_top_k: int = 5) -> list[dict]:
     """
     Retrieves top_k candidates from Qdrant by vector similarity, then reranks
-    them with the cross-encoder and returns the final final_top_k results
-    (default 5, backward-compatible).
-
-    Returns a list of dicts, each with:
-      "text", "title", "score" (vector similarity), "payload" (raw Qdrant
-      payload), "rerank_score" (cross-encoder score).
+    them with the cross-encoder and returns the final final_top_k results.
     """
-    client = get_client()
-    query_vector = embed_query(query)
-    results = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        limit=top_k,
-        with_payload=True,
-    )
-    candidates = [
-        {
-            "text": point.payload.get(TEXT_FIELD, ""),
-            "title": point.payload.get("title", ""),
-            "score": point.score,
-            "payload": point.payload,
-        }
-        for point in results.points
-    ]
-    return rerank(query, candidates, top_k=final_top_k)
+    try:
+        client = get_client()
+        query_vector = embed_query(query)
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
+        candidates = [
+            {
+                "text": point.payload.get(TEXT_FIELD, ""),
+                "title": point.payload.get("title", ""),
+                "score": point.score,
+                "payload": point.payload,
+            }
+            for point in results.points
+        ]
+        return rerank(query, candidates, top_k=final_top_k)
+    except Exception as exc:
+        logger.warning(f"[retriever] Search fallback due to external service error: {exc}")
+        return []
 
 
 def generate_query_variations(query: str, n: int = 3) -> list[str]:

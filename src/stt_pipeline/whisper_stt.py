@@ -1,9 +1,12 @@
 """
 whisper_stt.py
 --------------
-Owner: Member 4 (Agent & Web Search & Voice)
+Speech-to-text transcription module using Whisper.
 """
+import logging
 import whisper
+
+logger = logging.getLogger(__name__)
 
 WHISPER_MODEL_SIZE = "base"
 
@@ -14,7 +17,7 @@ def get_model():
     global _model
     if _model is None:
         _model = whisper.load_model(WHISPER_MODEL_SIZE)
-        print(f"[whisper_stt] Model loaded: {WHISPER_MODEL_SIZE}")
+        logger.info(f"[whisper_stt] Model loaded: {WHISPER_MODEL_SIZE}")
     return _model
 
 

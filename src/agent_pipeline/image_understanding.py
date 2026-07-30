@@ -1,4 +1,4 @@
-"""Owner: Member 5.
+"""
 Medical image understanding helpers built on HuggingFace InferenceClient.
 The model is used only to extract visible text and objective visual cues.
 It must never infer a diagnosis or a final medical conclusion.

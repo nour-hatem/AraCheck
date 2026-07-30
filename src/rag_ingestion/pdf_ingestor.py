@@ -1,8 +1,6 @@
 """
 pdf_ingestor.py
 ---------------
-Owner: Member 2 (RAG Ingestion)
-
 Processes a PDF file, extracts its text, chunks it, embeds the chunks,
 and upserts them into the Qdrant vector database.
 """
