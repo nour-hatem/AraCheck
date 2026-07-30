@@ -91,7 +91,7 @@ limiter = Limiter(key_func=get_remote_address)
 async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        content={"detail": "تم تجاوز الحد المسموح من الطلبات، حاول مرة أخرى بعد قليل"},
+        content={"detail": "Rate limit exceeded. Please try again in a moment."},
     )
 
 
@@ -111,7 +111,7 @@ def get_whisper():
             logger.error("[whisper] Failed to load model", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="خدمة تحويل الصوت غير متاحة حالياً، يرجى المحاولة لاحقاً.",
+                detail="Voice transcription service is currently unavailable. Please try again later.",
             )
     return _whisper_model
 
@@ -188,7 +188,7 @@ async def transcribe_endpoint(
     if not settings.ENABLE_VOICE_INPUT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="ميزة تحويل الصوت إلى نص معطلة مؤقتاً من قبل المسؤول.",
+            detail="Voice input feature is temporarily disabled by administrator.",
         )
 
     validate_audio_file(file)
@@ -256,7 +256,7 @@ async def transcribe_endpoint(
     except Exception:
         logger.error("Transcription failed", exc_info=True)
         err = ErrorResponse(
-            detail="فشل تحويل الصوت إلى نص، يرجى المحاولة مرة أخرى.",
+            detail="Audio transcription failed. Please try again.",
             error_code="transcription_error",
         )
         raise HTTPException(
@@ -279,7 +279,7 @@ async def analyze_image_endpoint(request: Request, file: UploadFile = File(...))
     if not settings.ENABLE_IMAGE_ANALYSIS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="ميزة تحليل الصور معطلة مؤقتاً من قبل المسؤول.",
+            detail="Image analysis feature is temporarily disabled by administrator.",
         )
 
     validate_image_file(file)
@@ -332,13 +332,13 @@ async def update_flag_endpoint(
     if admin_key != settings.ADMIN_SECRET_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="مفتاح الإدارة غير صحيح أو مفقود.",
+            detail="Invalid or missing admin secret key.",
         )
 
     if not update_flag(flag_name, req.enabled):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"الـ Flag '{flag_name}' غير موجود.",
+            detail=f"Feature flag '{flag_name}' not found.",
         )
 
     logger.info(f"[Feature Flag] {flag_name} -> {req.enabled}")
@@ -354,7 +354,7 @@ async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
     if not settings.ENABLE_PDF_INGESTION:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="ميزة رفع ومعالجة كتب الـ PDF معطلة مؤقتاً من قبل المسؤول.",
+            detail="PDF ingestion feature is temporarily disabled by administrator.",
         )
 
     validate_pdf_file(file)
@@ -388,7 +388,7 @@ async def upload_pdf_endpoint(request: Request, file: UploadFile = File(...)):
                 total_pages=0,
                 total_chunks=0,
                 status="error",
-                detail=f"فشلت معالجة ملف الـ PDF: {str(e)}",
+                detail=f"Failed to process PDF document: {str(e)}",
             ).dict(),
         )
     finally:
