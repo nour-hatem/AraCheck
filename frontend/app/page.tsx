@@ -10,13 +10,19 @@ import { Message, Conversation, UserProfile } from "@/lib/types";
 import { sendMessage } from "@/lib/api";
 import { AlertCircle } from "lucide-react";
 
+// Mirror of the SendPayload type from TextInput (avoid cross-component import)
+interface SendPayload {
+  display: string;
+  full: string;
+}
+
 const STORAGE_KEY_CONVS = "aracheck_conversations_v1";
 const STORAGE_KEY_ACTIVE = "aracheck_active_conv_id_v1";
-const STORAGE_KEY_USER = "aracheck_user_profile_v1";
+const STORAGE_KEY_USER = "aracheck_user_profile_v2";
 
 const INITIAL_USER: UserProfile = {
-  name: "د. نور حاتم",
-  email: "nour.hatem@aracheck.ai",
+  name: "ABGNA",
+  email: "abgna@aracheck.ai",
   role: "طبيب / مستخدم متميز",
 };
 
@@ -40,7 +46,15 @@ export default function Home() {
       const savedUser = localStorage.getItem(STORAGE_KEY_USER);
 
       if (savedUser) {
-        setUser(JSON.parse(savedUser));
+        const parsed = JSON.parse(savedUser);
+        if (parsed?.name?.includes("نور") || parsed?.email?.includes("nour")) {
+          setUser(INITIAL_USER);
+          localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(INITIAL_USER));
+        } else {
+          setUser(parsed);
+        }
+      } else {
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(INITIAL_USER));
       }
 
       if (savedConvs) {
@@ -106,14 +120,16 @@ export default function Home() {
     );
   };
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (payload: SendPayload) => {
+    const { display, full } = payload;
     let currentConvId = activeId;
     let updatedConvs = [...conversations];
 
     // If no active conversation exists, create one!
     if (!currentConvId || !updatedConvs.some((c) => c.id === currentConvId)) {
       const newConvId = crypto.randomUUID();
-      const newConvTitle = content.length > 25 ? `${content.slice(0, 25)}...` : content;
+      // Use display text for the conversation title
+      const newConvTitle = display.length > 25 ? `${display.slice(0, 25)}...` : display;
       const newConv: Conversation = {
         id: newConvId,
         title: newConvTitle,
@@ -128,16 +144,17 @@ export default function Home() {
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content,
+      content: full,                   // full content goes to history / API
+      displayContent: display,         // clean text shown in the bubble
     };
 
     // Update conversation messages & title if first message
     const targetConv = updatedConvs.find((c) => c.id === currentConvId)!;
     const isFirstMessage = targetConv.messages.length === 0;
     const newTitle = isFirstMessage
-      ? content.length > 25
-        ? `${content.slice(0, 25)}...`
-        : content
+      ? display.length > 25
+        ? `${display.slice(0, 25)}...`
+        : display
       : targetConv.title;
 
     const newMessages = [...targetConv.messages, userMessage];
@@ -154,7 +171,8 @@ export default function Home() {
     setError(null);
 
     try {
-      const reply = await sendMessage(content, targetConv.messages);
+      // Send full content (with hidden context) to the API
+      const reply = await sendMessage(full, targetConv.messages);
       setConversations((prev) =>
         prev.map((c) =>
           c.id === currentConvId
@@ -210,7 +228,7 @@ export default function Home() {
         <ChatWindow
           messages={messages}
           isLoading={isLoading}
-          onSelectSuggestion={handleSend}
+          onSelectSuggestion={(prompt) => handleSend({ display: prompt, full: prompt })}
         />
 
         {/* Error Alert Banner */}

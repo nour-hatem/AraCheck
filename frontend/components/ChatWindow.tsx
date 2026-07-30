@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Message } from "@/lib/types";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { WelcomeHero } from "./WelcomeHero";
-import { Bot, User, Copy, Check, Sparkles } from "lucide-react";
+import { Bot, User, Copy, Check } from "lucide-react";
 
 interface ChatWindowProps {
   messages: Message[];
@@ -41,11 +40,14 @@ function renderFormattedContent(content: string) {
 }
 
 export function ChatWindow({ messages, isLoading, onSelectSuggestion }: ChatWindowProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages, isLoading]);
 
   const handleCopy = (id: string, text: string) => {
@@ -63,7 +65,10 @@ export function ChatWindow({ messages, isLoading, onSelectSuggestion }: ChatWind
   }
 
   return (
-    <ScrollArea className="flex-1 px-3 sm:px-6">
+    <div
+      ref={scrollContainerRef}
+      className="flex-1 overflow-y-auto px-3 sm:px-6"
+    >
       <div className="flex flex-col gap-5 py-6 max-w-3xl mx-auto w-full">
         {messages.map((msg) => {
           const isUser = msg.role === "user";
@@ -104,7 +109,7 @@ export function ChatWindow({ messages, isLoading, onSelectSuggestion }: ChatWind
                       : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-200/90 dark:border-slate-800/90 rounded-tl-xs shadow-xs"
                   }`}
                 >
-                  {isUser ? msg.content : renderFormattedContent(msg.content)}
+                  {isUser ? (msg.displayContent ?? msg.content) : renderFormattedContent(msg.content)}
                 </div>
 
                 {/* Actions (for Assistant) */}
@@ -153,8 +158,7 @@ export function ChatWindow({ messages, isLoading, onSelectSuggestion }: ChatWind
             </div>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

@@ -9,7 +9,8 @@ export interface Citation {
 export interface Message {
   id: string;
   role: MessageRole;
-  content: string;
+  content: string;          // full content sent to the API / stored in history
+  displayContent?: string;  // optional: what to show the user (hides image/audio metadata)
   citations?: Citation[];
 }
 
