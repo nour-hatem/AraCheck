@@ -1,3 +1,14 @@
+# ─── AraCheck — Production API Dependencies ───────────────────────────────────
+# IMPORTANT: Keep this file lightweight for cloud deployment (target < 500 MB).
+# DO NOT add local ML training/inference deps here:
+#   ✗ torch / torchvision        (~2 GB)
+#   ✗ transformers               (~500 MB)
+#   ✗ peft / bitsandbytes        (training-only)
+#   ✗ openai-whisper             (local STT model — use Groq Whisper API instead)
+#
+# All heavy ML is handled via API calls (Groq, HuggingFace Inference API).
+# ──────────────────────────────────────────────────────────────────────────────
+
 fastapi
 uvicorn
 pydantic
@@ -12,3 +23,10 @@ python-multipart
 slowapi
 # PDF text extraction
 pymupdf
+
+# ─── Optional: RAG Cross-Encoder Reranker ────────────────────────────────────
+# sentence-transformers pulls in torch (~2 GB) — exclude on Vercel/lightweight
+# deployments where bundle size is constrained.
+# The reranker is lazy-loaded so startup is not affected even when included.
+# Uncomment only on platforms that support large bundles (Koyeb, Fly.io, etc.):
+# sentence-transformers

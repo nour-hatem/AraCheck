@@ -11,7 +11,6 @@ import logging
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 from qdrant_client import QdrantClient
-from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +48,13 @@ def get_hf_client() -> InferenceClient:
     return _hf_client
 
 
-def get_reranker() -> CrossEncoder:
+def get_reranker():
     """Returns a cached cross-encoder reranker (validated best performer)."""
     global _reranker
     if _reranker is None:
+        # Lazy import: sentence_transformers pulls in torch (~2 GB).
+        # Only loaded on the first RAG rerank call, not at startup.
+        from sentence_transformers import CrossEncoder
         _reranker = CrossEncoder(RERANK_MODEL)
     return _reranker
 

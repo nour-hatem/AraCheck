@@ -95,25 +95,9 @@ async def _rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded)
     )
 
 
-# ─── Whisper — lazy-loaded on first /transcribe call ─────────────────────────
-_whisper_model = None
-
-
-def get_whisper():
-    global _whisper_model
-    if _whisper_model is None:
-        try:
-            import whisper
-            whisper_size = os.getenv("WHISPER_MODEL", "small")
-            _whisper_model = whisper.load_model(whisper_size)
-            logger.info(f"[whisper] Model loaded: {whisper_size}")
-        except Exception:
-            logger.error("[whisper] Failed to load model", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Voice transcription service is currently unavailable. Please try again later.",
-            )
-    return _whisper_model
+# ─── Whisper — Groq API only (no local model) ────────────────────────────────
+# Local Whisper has been removed. The /transcribe endpoint uses Groq Whisper
+# API exclusively. If GROQ_API_KEY is missing, a 503 is returned.
 
 
 async def _global_exception_handler(request: Request, exc: Exception):
@@ -214,54 +198,36 @@ async def transcribe_endpoint(
             "I have a headache, fever, pain, cough, prescription, medicine, symptoms, doctor, how are you."
         )
 
-    try:
-        groq_key = os.getenv("GROQ_API_KEY", "")
-        # Groq Cloud Whisper (primary)
-        if groq_key and groq_key != "gsk_PUT_YOUR_GROQ_KEY_HERE":
-            try:
-                from groq import Groq
-                groq_client = Groq(api_key=groq_key)
-                with open(tmp_path, "rb") as audio_file:
-                    transcription = groq_client.audio.transcriptions.create(
-                        file=(os.path.basename(tmp_path), audio_file.read()),
-                        model="whisper-large-v3",
-                        prompt=prompt_text,
-                        response_format="json",
-                        language=target_lang,
-                        temperature=0.0,
-                    )
-                text = (transcription.text or "").strip()
-                logger.info(f"[transcribe] Groq whisper-large-v3 successful (lang={target_lang})")
-                return TranscribeResponse(text=text, language=target_lang)
-            except Exception as ge:
-                logger.warning(f"[transcribe] Groq Whisper failed ({ge}), falling back to local model.")
-
-        # Local Whisper (fallback)
-        model = get_whisper()
-
-        result = model.transcribe(
-            tmp_path,
-            language=target_lang,
-            beam_size=1,
-            best_of=1,
-            temperature=0.0,
-            condition_on_previous_text=False,
-            initial_prompt=prompt_text,
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key or groq_key == "gsk_PUT_YOUR_GROQ_KEY_HERE":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice transcription requires a valid GROQ_API_KEY. Please configure it in your environment.",
         )
-        text = result.get("text", "").strip()
+
+    try:
+        from groq import Groq
+        groq_client = Groq(api_key=groq_key)
+        with open(tmp_path, "rb") as audio_file:
+            transcription = groq_client.audio.transcriptions.create(
+                file=(os.path.basename(tmp_path), audio_file.read()),
+                model="whisper-large-v3",
+                prompt=prompt_text,
+                response_format="json",
+                language=target_lang,
+                temperature=0.0,
+            )
+        text = (transcription.text or "").strip()
+        logger.info(f"[transcribe] Groq whisper-large-v3 successful (lang={target_lang})")
         return TranscribeResponse(text=text, language=target_lang)
 
     except HTTPException:
         raise
-    except Exception:
-        logger.error("Transcription failed", exc_info=True)
-        err = ErrorResponse(
-            detail="Audio transcription failed. Please try again.",
-            error_code="transcription_error",
-        )
+    except Exception as e:
+        logger.error(f"[transcribe] Groq Whisper failed: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=err.dict(),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice transcription service is currently unavailable. Please try again later.",
         )
     finally:
         try:

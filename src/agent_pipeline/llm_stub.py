@@ -1,9 +1,13 @@
 """
 llm_stub.py
 -----------
-LLM backend — Groq (primary) with HuggingFace fallback.
-Uses Qwen/2.5-32b on Groq for fast, free inference.
+LLM backend — Groq API only (no local models, no HuggingFace LLM fallback).
+Uses llama-3.3-70b on Groq for fast, free inference.
 Handles greetings/casual chat directly without escalating to RAG.
+
+Note: HuggingFace InferenceClient fallback has been removed to keep the
+production bundle lightweight. Image analysis still uses HF via its own
+import in image_understanding.py.
 """
 
 import os
@@ -13,13 +17,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-HF_TOKEN     = os.environ.get("HF_TOKEN", "")
 
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-HF_MODEL   = "Qwen/Qwen2.5-7B-Instruct"
 
 _groq_client = None
-_hf_client   = None
 
 # Greeting and casual-chat patterns — bypasses RAG routing
 _CASUAL_PATTERNS = re.compile(
@@ -45,8 +46,13 @@ _NON_MEDICAL_KEYWORDS = re.compile(
 
 
 def _get_client():
-    """Return a Groq client if GROQ_API_KEY is set, else fall back to HF InferenceClient."""
-    global _groq_client, _hf_client
+    """Return a Groq client and model name, or (None, None) if key is missing.
+
+    HuggingFace InferenceClient has been removed as an LLM fallback to keep
+    the production bundle lightweight. If GROQ_API_KEY is not set, callers
+    receive (None, None) and should return a graceful "not confident" signal.
+    """
+    global _groq_client
     if GROQ_API_KEY and GROQ_API_KEY != "gsk_PUT_YOUR_GROQ_KEY_HERE":
         if _groq_client is None:
             try:
@@ -54,15 +60,15 @@ def _get_client():
                 _groq_client = Groq(api_key=GROQ_API_KEY)
                 logger.info("[llm_stub] Using Groq backend — model: %s", GROQ_MODEL)
             except ImportError:
-                logger.warning("[llm_stub] groq package not installed, falling back to HF")
+                logger.warning("[llm_stub] groq package not installed")
         if _groq_client:
             return _groq_client, GROQ_MODEL
-    # HuggingFace fallback
-    if _hf_client is None:
-        from huggingface_hub import InferenceClient
-        _hf_client = InferenceClient(api_key=HF_TOKEN)
-        logger.info("[llm_stub] Using HuggingFace backend — model: %s", HF_MODEL)
-    return _hf_client, HF_MODEL
+
+    logger.warning(
+        "[llm_stub] GROQ_API_KEY is not configured. "
+        "Set the GROQ_API_KEY environment variable to enable LLM responses."
+    )
+    return None, None
 
 
 def _is_greeting(query: str) -> bool:
@@ -128,6 +134,8 @@ def generate_answer(
     if not context and _is_greeting(query):
         try:
             client, model = _get_client()
+            if client is None:
+                return {"answer": "أهلاً بك! كيف يمكنني مساعدتك في استفساراتك الطبية؟", "confident": True}
             messages = format_messages(system_prompt, history, query)
             response = client.chat.completions.create(
                 model=model,
@@ -164,6 +172,9 @@ def generate_answer(
 
     try:
         client, model = _get_client()
+        if client is None:
+            logger.warning("[llm_stub] No LLM client available — returning not confident.")
+            return {"answer": None, "confident": False}
         messages = format_messages(system_prompt, history, user_message)
         response = client.chat.completions.create(
             model=model,
@@ -178,7 +189,6 @@ def generate_answer(
             if "I_AM_NOT_CONFIDENT" in answer or len(answer) < 20:
                 return {"answer": None, "confident": False}
             return {"answer": answer, "confident": True}
-
 
         return {"answer": answer, "confident": True}
 

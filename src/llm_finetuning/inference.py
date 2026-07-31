@@ -36,9 +36,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Literal
 
-import torch
-
 if TYPE_CHECKING:
+    import torch
     from configs import Config
 
 logger = logging.getLogger(__name__)
@@ -126,6 +125,7 @@ class MedicalAssistant:
 
     def _load_local(self) -> None:
         """Load the base model locally and merge the LoRA adapter."""
+        import torch  # heavy import — only loaded in local mode
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -160,6 +160,8 @@ class MedicalAssistant:
 
     def _generate_local(self, prompt: str, max_new_tokens: int) -> str:
         """Generate a response using the locally loaded PeftModel."""
+        import torch  # heavy import — only loaded in local mode
+
         if self._model is None or self._tokenizer is None:
             raise RuntimeError("Call load() before generate().")
 
