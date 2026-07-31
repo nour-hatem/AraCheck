@@ -52,7 +52,7 @@ def _parse_allowed_origins() -> List[str]:
     return parsed
 
 
-# ─── Settings (must be imported early — also triggers .env loading) ───────────
+# ─── Settings (must be imported early — also triggers ..env loading) ───────────
 from src.settings import settings, get_active_flags, update_flag
 
 # ─── Agent & pipeline imports ─────────────────────────────────────────────────

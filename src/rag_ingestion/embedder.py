@@ -3,6 +3,7 @@ embedder.py
 -----------
 Text embedding via BAAI/bge-m3 using SentenceTransformers.
 """
+import os
 
 from sentence_transformers import SentenceTransformer
 
@@ -18,9 +19,13 @@ _model = None
 
 def get_model(device: str = "cuda") -> SentenceTransformer:
     global _model
+
     if _model is None:
-        _model = SentenceTransformer(MODEL_NAME, device=device)
-        logger.info(f"[embedder] Model loaded: {MODEL_NAME} | dim={_model.get_sentence_embedding_dimension()}")
+        _model = SentenceTransformer(
+            MODEL_NAME,
+            device=device,
+            token=os.getenv("HF_TOKEN"),
+        )
     return _model
 
 

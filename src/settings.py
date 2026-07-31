@@ -2,7 +2,7 @@
 src/settings.py
 ---------------
 Application settings and runtime feature flags.
-Loads environment variables from .env (or legacy 'env') relative to the project root.
+Loads environment variables from ..env (or legacy '.env') relative to the project root.
 """
 import os
 from pathlib import Path
@@ -10,9 +10,9 @@ from dotenv import load_dotenv
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-_dotenv_path = _PROJECT_ROOT / ".env"
+_dotenv_path = _PROJECT_ROOT / "..env"
 if not _dotenv_path.exists():
-    _dotenv_path = _PROJECT_ROOT / "env"
+    _dotenv_path = _PROJECT_ROOT / ".env"
 
 load_dotenv(dotenv_path=_dotenv_path)
 
