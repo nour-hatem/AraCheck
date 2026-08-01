@@ -6,6 +6,7 @@ This document describes what is actually implemented in this repository: the arc
 
 ## Table of Contents
 
+0. [Interface (Screenshots)](#0-interface-screenshots)
 1. [Problem and Approach](#1-problem-and-approach)
 2. [System Architecture](#2-system-architecture)
 3. [Request Lifecycle](#3-request-lifecycle)
@@ -22,6 +23,58 @@ This document describes what is actually implemented in this repository: the arc
 14. [Roadmap](#14-roadmap)
 15. [Medical Disclaimer](#15-medical-disclaimer)
 16. [License](#16-license)
+
+---
+
+## 0. Interface (Screenshots)
+
+### Home Screen
+
+| Light Mode | Dark Mode |
+|---|---|
+| <img width="1917" height="872" alt="AraCheck home screen — light theme" src="https://github.com/user-attachments/assets/8b695b0b-a37d-4fb8-98d8-3d745047a956" /> | <img width="1917" height="872" alt="AraCheck home screen — dark theme" src="https://github.com/user-attachments/assets/909608cf-5fb3-4b01-8d7d-47d10304f8fd" /> |
+
+The landing screen presents four pre-seeded topic cards (Antibiotics, Cold & Flu, Blood Pressure, Nutrition & Immunity) and a bilingual input bar. The status indicator in the top-left confirms whether the app is connected to the live API or running against the local mock.
+
+---
+
+### Arabic Chat — Tiered Response with Numbered Citations
+
+<img width="1917" height="872" alt="Arabic chat showing a detailed diabetes symptoms response with numbered citations" src="https://github.com/user-attachments/assets/72b4e958-09df-4ab1-928a-96f01984b8e9" />
+
+A detailed Arabic response to "ما هي أعراض مرض السكر؟" (What are the symptoms of diabetes?). The system returned a numbered, structured answer with inline citations (`[1]`, `[2]`, etc.), demonstrating that the RAG tier retrieved grounded context rather than relying on parametric memory alone.
+
+---
+
+### English Chat — Cross-Language Support
+
+<img width="1917" height="872" alt="English chat showing a response to 'what is diabetes'" src="https://github.com/user-attachments/assets/d975e4ea-4f2c-4bee-9706-eedbbe475f83" />
+
+The same session switches to English ("what is diabetes"), and the system replies in English. The input bar also shows the image-upload affordance: a medical image (prescription, lab result, or similar) can be attached and its text extracted before being passed into the RAG/LLM pipeline.
+
+---
+
+### Voice Input — Active Recording State
+
+<img width="1917" height="872" alt="Voice recording active with waveform progress bar" src="https://github.com/user-attachments/assets/38bd3dea-3255-463b-b770-4a0a01cf6c68" />
+
+Pressing the microphone button switches the input bar into recording mode. The waveform progress bar at the bottom of the screen tracks recording time. On submit, the audio is transcribed (via Groq-hosted `whisper-large-v3` or local Whisper as fallback) and the transcript is injected into the chat pipeline identically to a typed message.
+
+---
+
+### Image Upload + Fact Verification
+
+<img width="1921" height="930" alt="User uploads an image about diabetes drinks and asks whether the information is accurate; system returns a sourced Arabic response with inline citations" src="https://github.com/user-attachments/assets/704c08fd-bb0f-47be-a6e8-9803b98c27d6" />
+
+The user attached an image showing a claim that certain drinks are beneficial for diabetes patients, then asked "هل المعلومة صحيحة؟" (Is this information accurate?). The vision-language model extracted the image content and passed it into the pipeline as context. The system then retrieved relevant PubMed chunks and returned a sourced Arabic response, with inline citation markers (`[1]`–`[4]`) referencing the specific chunks that grounded each claim. This demonstrates the full image-upload-to-RAG flow: image → text extraction → retrieval → cited answer.
+
+---
+
+### Demo Video
+
+
+
+<video src="https://github.com/user-attachments/assets/4ae70f65-39f1-465d-bf25-0f96e7e1a6ca" controls width="100%"></video>
 
 ---
 
@@ -46,12 +99,12 @@ flowchart TD
         direction TB
         B1["Embed query (BAAI/bge-m3)"]
         B2["Vector search top-25 -> cross-encoder rerank top-5"]
-        B3["Confidence gate: margin + absolute floor"]
+        B3["Context presence check (margin-based gate built, not yet wired)"]
         B1 --> B2 --> B3
     end
 
-    T2 -->|confident| OUT
-    T2 -->|not confident| T3
+    T2 -->|context returned| OUT
+    T2 -->|no context returned| T3
 
     subgraph T3["Tier 3 — Web search (Tavily)"]
         direction TB
@@ -77,7 +130,7 @@ flowchart LR
     API --> ING["RAG Ingestion<br/>(src/rag_ingestion)<br/>PDF -> chunks -> embeddings"]
     API --> STT["STT Pipeline<br/>(src/stt_pipeline)<br/>Whisper transcription"]
 
-    AG --> LLM["LLM Backends<br/>HF Inference API (Qwen2.5-72B)<br/>Groq (Qwen 32B)<br/>HF fallback (Qwen2.5-7B)"]
+    AG --> LLM["LLM Backends<br/>HF Inference API (Qwen2.5-72B)<br/>Groq (llama-3.3-70b-versatile)<br/>HF fallback (Qwen2.5-7B)"]
     AG --> RET["RAG Retrieval<br/>(src/rag_retrieval)<br/>Qdrant + cross-encoder rerank<br/>+ confidence scoring"]
     AG --> WEB["Tavily Web Search API"]
 
@@ -103,6 +156,8 @@ flowchart LR
 
 The sequence below traces an actual `/chat` call that escalates through all three tiers, showing exactly which function is invoked at each step.
 
+> **Note on Tier 2 escalation:** The sequence diagram reflects what the live `graph.py` currently does: the `rag_node` escalates to Tier 3 based purely on whether any context was returned (context presence check). The margin-based confidence gate (`compute_margin` / `is_confident` in `rag_tool.py`) is fully implemented and logged, but is not yet wired into the live routing logic. See [Section 4](#4-retrieval-and-confidence-scoring) and [Section 13](#13-known-limitations) for detail.
+
 ```mermaid
 sequenceDiagram
     participant U as Client
@@ -124,8 +179,7 @@ sequenceDiagram
     G->>R: rag_node(state)
     R->>Q: embed + search + rerank
     Q-->>R: hits + rerank_score
-    R->>R: compute_margin(hits), is_confident(hits)
-    R-->>G: confident=false (margin below threshold)
+    R-->>G: confident=false (no context returned)
     G->>W: web_node(state)
     W->>T: web_search(query)
     T-->>W: ranked web snippets
@@ -164,6 +218,8 @@ def is_confident(hits, margin_threshold=1.0, absolute_floor=0.0) -> bool:
     return compute_margin(hits) >= margin_threshold
 ```
 
+> **Important:** `compute_margin` and `is_confident` are fully implemented in `rag_tool.py` and are exercised by the evaluation script and logged on every query. However, the live `rag_node` in `graph.py` currently calls `get_medical_context()`, which escalates to Tier 3 based on context presence (did retrieval return anything?) rather than calling `get_medical_context_with_confidence()`, which applies the margin gate. The margin-based routing is built and ready but pending integration into `graph.py`. Wiring it in is listed in the Roadmap.
+
 A separate evaluation script (`src/rag_retrieval/eval_ragas.py`) measures retrieval quality on a fixed 12-question test set spanning symptom, cause/mechanism, treatment, and complication categories, reporting keyword precision and average rerank score per question.
 
 A multi-query variant (`multi_query_search` in `retriever.py`, using LLM-generated query paraphrases fused with Reciprocal Rank Fusion) was implemented and benchmarked, but is intentionally not wired into the default path: it measured 66.7% precision against 70% for plain single-query search on the test set, while adding LLM-call latency, so it was kept in the codebase for future re-evaluation rather than deleted or shipped as the default.
@@ -178,7 +234,7 @@ The generation layer has more redundancy than a single API call, specifically to
 flowchart LR
     Q[Query] --> P1{"src.llm_finetuning.inference<br/>Qwen2.5-72B via HF API"}
     P1 -->|success + answer| DONE1[Return answer]
-    P1 -->|import error / call fails / empty answer| P2{"src.agent_pipeline.llm_stub<br/>Groq Qwen 32B"}
+    P1 -->|import error / call fails / empty answer| P2{"src.agent_pipeline.llm_stub<br/>Groq llama-3.3-70b-versatile"}
     P2 -->|GROQ_API_KEY set| DONE2[Return answer]
     P2 -->|no Groq key| P3["HF InferenceClient<br/>Qwen2.5-7B-Instruct"]
     P3 --> DONE3[Return answer]
@@ -220,6 +276,9 @@ AraCheck/
   configs/
     config.py                 Fine-tuning configuration                      (203 lines)
 
+  docs/
+    screenshots/              UI screenshots referenced in this README
+
   scripts/
     ingest_books.py            Placeholder batch-ingestion script              (13 lines)
 
@@ -253,7 +312,9 @@ AraCheck/
 
   frontend/                   Next.js 16 application (19 files, ~1,770 lines)
     app/                          App Router pages
-    components/                   ChatWindow, VoiceInput, Sidebar, Citation, ThemeToggle
+    components/                   ChatWindow, VoiceInput, Sidebar,
+                                  Citation (built, not yet integrated into ChatWindow),
+                                  ThemeToggle
     lib/                          api.ts (backend client + mock API), types.ts
 ```
 
@@ -269,10 +330,10 @@ The table below documents the non-obvious choices in this system and why they we
 
 | Decision | Alternative considered | Why this was chosen | Trade-off accepted |
 |---|---|---|---|
-| Margin-based RAG confidence instead of a fixed score threshold | A single absolute cutoff on the cross-encoder score | The cross-encoder output is an unbounded regression score, not a probability, so no single cutoff is meaningful across queries; the margin is self-normalizing regardless of scale | Requires at least two candidates to compute; calibrated on a small (12-question) sample, so thresholds are provisional |
+| Margin-based RAG confidence instead of a fixed score threshold | A single absolute cutoff on the cross-encoder score | The cross-encoder output is an unbounded regression score, not a probability, so no single cutoff is meaningful across queries; the margin is self-normalizing regardless of scale | Requires at least two candidates to compute; calibrated on a small (12-question) sample, so thresholds are provisional; not yet wired into the live routing path |
 | Three-tier escalation (LLM to RAG to web) instead of always retrieving | Always run RAG/web for every query | Greetings and general questions the model already knows do not need retrieval latency or cost | Adds a dependency on the LLM honestly signaling low confidence (`I_AM_NOT_CONFIDENT`); a false "confident" response skips retrieval entirely |
 | Embedding queries via the HuggingFace Inference API rather than loading `BAAI/bge-m3` locally | Local model on GPU | The retrieval service needed to run on a machine without a GPU and with limited local compute | Adds network latency and an external dependency to every retrieval call |
-| Groq as the primary chat LLM, HuggingFace as fallback | A single provider | Groq offered materially faster inference for the chosen Qwen model at effectively no cost during development | Two provider integrations to maintain instead of one |
+| Groq as the primary chat LLM, HuggingFace as fallback | A single provider | Groq offered materially faster inference for the chosen model at effectively no cost during development | Two provider integrations to maintain instead of one |
 | Multi-query RRF retrieval implemented but not enabled by default | Ship it as the default retrieval strategy | Benchmarked at 66.7% precision versus 70% for plain search on the 12-question set, with added LLM-call latency | The extra code path exists but is currently unused; kept for future re-evaluation on a larger test set |
 | Feature flags toggled at runtime via a protected endpoint | Environment-variable-only flags requiring redeploy | Lets voice/image/PDF features be disabled instantly if a dependency (Whisper, HF, Qdrant) becomes unavailable in production | Requires securing the admin key and keeping the in-memory flag registry consistent across processes |
 | Image understanding restricted to text extraction and neutral description only | Allow the vision model to describe likely conditions | A vision-language model speculating on pathology from an image is a diagnosis risk with no clinical basis | Reduces the feature's usefulness on its own; it is meant to feed the RAG/LLM layer, not replace a radiologist |
@@ -285,7 +346,7 @@ The table below documents the non-obvious choices in this system and why they we
 
 **Retrieval:** Qdrant (vector store), BAAI/bge-m3 (1024-dim embeddings), cross-encoder/ms-marco-MiniLM-L-6-v2 (reranking), PyMuPDF (PDF text extraction), LangChain `RecursiveCharacterTextSplitter` (chunking)
 
-**Generation:** HuggingFace Inference API (Qwen2.5-72B-Instruct, Qwen2.5-7B-Instruct), Groq API (Qwen 32B), Tavily (web search), zai-org/GLM-4.5V (vision-language model)
+**Generation:** HuggingFace Inference API (Qwen2.5-72B-Instruct, Qwen2.5-7B-Instruct), Groq API (llama-3.3-70b-versatile), Tavily (web search), zai-org/GLM-4.5V (vision-language model)
 
 **Speech:** OpenAI Whisper (local), Groq-hosted whisper-large-v3 (remote, preferred when available)
 
@@ -391,7 +452,7 @@ Create a `.env` file in the project root:
 
 ```env
 GROQ_API_KEY=your_groq_key
-GROQ_MODEL=qwen-qwq-32b
+GROQ_MODEL=llama-3.3-70b-versatile
 HF_TOKEN=your_huggingface_token
 TAVILY_API_KEY=your_tavily_key
 
@@ -460,6 +521,8 @@ Both are deliberately lightweight, fixed test sets rather than large held-out be
 This section is included deliberately, as an accurate account of the current state of the system:
 
 - The RAG confidence thresholds (`margin_threshold = 1.0`, `absolute_floor = 0.0`) are provisional, calibrated on only 12 test questions, and are explicitly intended to be recalibrated once `logs/rag_confidence_log.jsonl` accumulates real production queries.
+- The margin-based confidence gate (`compute_margin` / `is_confident` in `rag_tool.py`) is fully implemented and logged, but is not yet wired into the live `graph.py` routing. The current Tier 2 → Tier 3 escalation relies on context presence (whether retrieval returned anything) rather than the margin gate.
+- `Citation.tsx` exists in the frontend components but is not currently imported into `ChatWindow.tsx`; inline citation markers (`[1]`, `[2]`, etc.) render as plain text in the chat UI rather than as clickable source links.
 - Two independent reranking implementations exist (`retriever.py`'s built-in cross-encoder rerank and the separate `reranker.py` module); only the former is on the live query path.
 - `docker-compose.yml` has build paths that do not match the current repository layout.
 - `scripts/ingest_books.py` is a placeholder and does not yet perform real ingestion logic.
@@ -471,7 +534,9 @@ This section is included deliberately, as an accurate account of the current sta
 
 ## 14. Roadmap
 
+- Wire `get_medical_context_with_confidence()` into the live `rag_node` in `graph.py`, replacing the current context-presence check with the margin-based confidence gate.
 - Recalibrate RAG confidence thresholds against real query logs once sufficient production data is available in `logs/rag_confidence_log.jsonl`.
+- Integrate `Citation.tsx` into `ChatWindow.tsx` so inline citation markers render as clickable links to their source chunks.
 - Unify the two reranking implementations into a single configurable module.
 - Correct `docker-compose.yml` build paths and add a CI job that builds both images on every push.
 - Expand the retrieval evaluation set beyond 12 questions, and re-evaluate `multi_query_search` against it before deciding whether to enable it by default.
@@ -485,7 +550,6 @@ This section is included deliberately, as an accurate account of the current sta
 AraCheck is an informational assistant only. It is not a substitute for professional medical consultation, clinical diagnosis, or emergency services. The system prompt (`src/agent_pipeline/prompts.py`) explicitly constrains the model to avoid presenting any conclusion as a final or definitive diagnosis, to recommend immediate medical care when described symptoms are potentially serious, to rely only on supplied context rather than fabricating facts or sources, and to state clearly when its confidence in an answer is low.
 
 ---
-
 
 ## 16. License
 
